@@ -5,18 +5,18 @@ interface
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
   Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, Winapi.WebView2,
-  Winapi.ActiveX, Vcl.Edge;
+  Winapi.ActiveX, Vcl.Edge, Vcl.ExtCtrls;
 
 type
   TForm49 = class(TForm)
     Button1: TButton;
     Memo1: TMemo;
-    mmoResponse: TMemo;
     EdgeBrowser1: TEdgeBrowser;
     lblHost: TLabel;
     edtHost: TEdit;
     lblPort: TLabel;
     edtPort: TEdit;
+    pnlTop: TPanel;
     procedure Button1Click(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
@@ -40,212 +40,12 @@ var
 implementation
 
 uses
-  System.JSON, System.IOUtils, System.Generics.Collections, IniFiles;
-
-// ---- WinHTTP API (streaming-capable Windows HTTP) ----
-
-type
-  HINTERNET = Pointer;
-
-const
-  WINHTTP_ACCESS_TYPE_DEFAULT_PROXY = 0;
-  WINHTTP_ADDREQ_FLAG_ADD           = $20000000;
-
-function WinHttpOpen(pszUserAgent: PWideChar; dwAccessType: DWORD;
-  pszProxyName, pszProxyBypass: PWideChar; dwFlags: DWORD): HINTERNET;
-  stdcall; external 'winhttp.dll';
-function WinHttpConnect(hSession: HINTERNET; pswzServerName: PWideChar;
-  nServerPort: Word; dwReserved: DWORD): HINTERNET;
-  stdcall; external 'winhttp.dll';
-function WinHttpOpenRequest(hConnect: HINTERNET;
-  pwszVerb, pwszObjectName, pwszVersion, pwszReferrer,
-  ppwszAcceptTypes: PWideChar; dwFlags: DWORD): HINTERNET;
-  stdcall; external 'winhttp.dll';
-function WinHttpAddRequestHeaders(hRequest: HINTERNET;
-  pwszHeaders: PWideChar; dwHeadersLength, dwModifiers: DWORD): BOOL;
-  stdcall; external 'winhttp.dll';
-function WinHttpSendRequest(hRequest: HINTERNET;
-  pwszHeaders: PWideChar; dwHeadersLength: DWORD;
-  lpOptional: Pointer; dwOptionalLength, dwTotalLength, dwContext: DWORD): BOOL;
-  stdcall; external 'winhttp.dll';
-function WinHttpReceiveResponse(hRequest: HINTERNET; lpReserved: Pointer): BOOL;
-  stdcall; external 'winhttp.dll';
-function WinHttpQueryDataAvailable(hRequest: HINTERNET;
-  lpdwNumberOfBytesAvailable: PDWORD): BOOL;
-  stdcall; external 'winhttp.dll';
-function WinHttpReadData(hRequest: HINTERNET; lpBuffer: Pointer;
-  dwNumberOfBytesToRead: DWORD; lpdwNumberOfBytesRead: PDWORD): BOOL;
-  stdcall; external 'winhttp.dll';
-function WinHttpCloseHandle(hInternet: HINTERNET): BOOL;
-  stdcall; external 'winhttp.dll';
+  System.JSON, System.IOUtils, IniFiles,
+  StreamThread;
 
 {$R *.dfm}
 
-// ---- Streaming thread ----
-//
-// Reads the SSE response from LM Studio chunk by chunk.
-// Each 'data: {...}' line is parsed and choices[0].delta.content
-// is extracted and delivered to FOnChunk (on the main thread).
-// FOnDone is called on the main thread when the stream ends cleanly.
-
-type
-  TStreamThread = class(TThread)
-  private
-    FHost: string;
-    FPort: Word;
-    FRequestBody: string;
-    FSession: HINTERNET;
-    FOnChunk: TProc<string>;
-    FOnDone: TProc;
-    procedure ProcessSSEBuffer(var ABuffer: string);
-    function ExtractChunkText(const AJSON: string): string;
-  protected
-    procedure Execute; override;
-  public
-    constructor Create(const AHost: string; APort: Word;
-      const ARequestBody: string;
-      AOnChunk: TProc<string>; AOnDone: TProc);
-    procedure Cancel;
-  end;
-
-constructor TStreamThread.Create(const AHost: string; APort: Word;
-  const ARequestBody: string; AOnChunk: TProc<string>; AOnDone: TProc);
-begin
-  inherited Create(False);
-  FreeOnTerminate := False;
-  FHost        := AHost;
-  FPort        := APort;
-  FRequestBody := ARequestBody;
-  FOnChunk     := AOnChunk;
-  FOnDone      := AOnDone;
-  FSession     := nil;
-end;
-
-procedure TStreamThread.Cancel;
-begin
-  Terminate;
-  if FSession <> nil then
-    WinHttpCloseHandle(FSession); // unblocks any pending WinHttp call
-end;
-
-function TStreamThread.ExtractChunkText(const AJSON: string): string;
-var
-  Root: TJSONObject;
-  Choices: TJSONArray;
-  Choice, Delta: TJSONObject;
-begin
-  Result := '';
-  Root := TJSONObject.ParseJSONValue(AJSON) as TJSONObject;
-  if Root = nil then Exit;
-  try
-    Choices := Root.GetValue<TJSONArray>('choices');
-    if (Choices = nil) or (Choices.Count = 0) then Exit;
-    Choice := Choices.Items[0] as TJSONObject;
-    if Choice = nil then Exit;
-    Delta := Choice.GetValue<TJSONObject>('delta');
-    if Delta = nil then Exit;
-    Delta.TryGetValue<string>('content', Result);
-  finally
-    Root.Free;
-  end;
-end;
-
-procedure TStreamThread.ProcessSSEBuffer(var ABuffer: string);
-var
-  NLPos: Integer;
-  Line, Data, Chunk: string;
-begin
-  while True do
-  begin
-    NLPos := ABuffer.IndexOf(#10);
-    if NLPos < 0 then Break;
-    Line    := ABuffer.Substring(0, NLPos).TrimRight([#13]);
-    ABuffer := ABuffer.Substring(NLPos + 1);
-    if not Line.StartsWith('data: ') then Continue;
-    Data  := Line.Substring(6);
-    if Data = '[DONE]' then Continue;
-    Chunk := ExtractChunkText(Data);
-    if Chunk = '' then Continue;
-    TThread.Synchronize(Self, procedure
-    begin
-      FOnChunk(Chunk);
-    end);
-  end;
-end;
-
-procedure TStreamThread.Execute;
-const
-  BUF_SIZE = 8192;
-var
-  Connection, Request: HINTERNET;
-  BodyBytes: TBytes;
-  RawBuf: TBytes;
-  Available, BytesRead: DWORD;
-  LineBuffer: string;
-begin
-  FSession := WinHttpOpen('LMClient/1.0', WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-    nil, nil, 0);
-  if FSession = nil then Exit;
-  try
-    Connection := WinHttpConnect(FSession, PWideChar(FHost), FPort, 0);
-    if Connection = nil then Exit;
-    try
-      Request := WinHttpOpenRequest(Connection, 'POST',
-        '/v1/chat/completions', nil, nil, nil, 0);
-      if Request = nil then Exit;
-      try
-        WinHttpAddRequestHeaders(Request,
-          'Content-Type: application/json'#13#10,
-          DWORD(-1), WINHTTP_ADDREQ_FLAG_ADD);
-
-        BodyBytes := TEncoding.UTF8.GetBytes(FRequestBody);
-        if not WinHttpSendRequest(Request, nil, 0,
-          Pointer(BodyBytes), Length(BodyBytes), Length(BodyBytes), 0) then Exit;
-        if not WinHttpReceiveResponse(Request, nil) then Exit;
-
-        LineBuffer := '';
-        SetLength(RawBuf, BUF_SIZE);
-        while not Terminated do
-        begin
-          Available := 0;
-          if not WinHttpQueryDataAvailable(Request, @Available) then Break;
-          if Available = 0 then Break; // server closed the stream
-          if Available > BUF_SIZE then Available := BUF_SIZE;
-          BytesRead := 0;
-          if not WinHttpReadData(Request, Pointer(RawBuf),
-            Available, @BytesRead) then Break;
-          if BytesRead = 0 then Break;
-          LineBuffer := LineBuffer +
-            TEncoding.UTF8.GetString(RawBuf, 0, Integer(BytesRead));
-          ProcessSSEBuffer(LineBuffer);
-        end;
-      finally
-        if Request <> nil then WinHttpCloseHandle(Request);
-      end;
-    finally
-      if Connection <> nil then WinHttpCloseHandle(Connection);
-    end;
-  finally
-    if FSession <> nil then
-    begin
-      WinHttpCloseHandle(FSession);
-      FSession := nil;
-    end;
-  end;
-
-  if not Terminated then
-  begin
-    // Capture FOnDone by value so the queue wrapper holds its own strong
-    // reference to the anonymous method object. Without this, the wrapper
-    // only holds a pointer to Self (TStreamThread) and reads Self.FOnDone
-    // at call time — but FreeAndNil(FStreamThread) inside the callback
-    // drops the ref count to zero and frees the object mid-execution.
-    var DoneProc := FOnDone;
-    TThread.Queue(nil, procedure begin DoneProc(); end);
-  end;
-end;
-
-// ---- Page rendering constants ----
+// ---- Page template ----
 
 const
   CPageCSS =
@@ -410,11 +210,10 @@ var
 begin
   FAccumulatedText := '';
   FPageReady := False;
-  mmoResponse.Clear;
   Button1.Enabled := False;
   Button1.Caption := 'Asking…';
 
-  // Load the skeleton page now so the render + update functions are ready.
+  // Navigate to skeleton page with render + update functions pre-loaded.
   // ExecuteScript calls are deferred until OnNavigationCompleted fires.
   HTML :=
     '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' + CPageCSS +
@@ -429,18 +228,17 @@ begin
     edtHost.Text,
     StrToIntDef(edtPort.Text, 1234),
     BuildRequestJSON(APrompt),
-    procedure(AText: string) // called on main thread per chunk
+    procedure(AText: string)
     begin
       FAccumulatedText := FAccumulatedText + AText;
-      mmoResponse.Text := mmoResponse.Text + AText;
       UpdateEdgeBrowser;
     end,
-    procedure // called on main thread when stream ends
+    procedure
     begin
       FreeAndNil(FStreamThread);
       Button1.Enabled := True;
       Button1.Caption := 'Ask';
-      UpdateEdgeBrowser; // ensure final state is shown
+      UpdateEdgeBrowser;
     end
   );
 end;

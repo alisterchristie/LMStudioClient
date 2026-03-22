@@ -127,6 +127,7 @@
             <Form>Form49</Form>
             <FormType>dfm</FormType>
         </DCCReference>
+        <DCCReference Include="StreamThread.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
