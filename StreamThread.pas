@@ -1,4 +1,4 @@
-unit StreamThread;
+﻿unit StreamThread;
 
 // Streams an OpenAI-compatible SSE response from a local LM Studio instance.
 // Parses each 'data: {...}' line, extracts choices[0].delta.content, and
@@ -35,7 +35,6 @@ implementation
 
 uses
   Winapi.Windows,
-  System.SysUtils,
   System.JSON,
   System.Generics.Collections;
 
