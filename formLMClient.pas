@@ -25,6 +25,10 @@ type
     procedure ShowMarkdown(const AMarkdown: string);
     procedure LoadSettings;
     procedure SaveSettings;
+    function BuildURL: string;
+    function BuildRequestJSON(const APrompt: string): string;
+    function PostRequest(const AURL, ABody: string): string;
+    function ParseResponse(const AResponseJSON: string): string;
   public
     { Public declarations }
   end;
@@ -128,64 +132,73 @@ begin
     StringReplace(TempFile, '\', '/', [rfReplaceAll]));
 end;
 
-function TForm49.AskLMStudio(const APrompt: string): string;
+function TForm49.BuildURL: string;
+begin
+  Result := 'http://' + edtHost.Text + ':' + edtPort.Text + '/v1/chat/completions';
+end;
+
+function TForm49.BuildRequestJSON(const APrompt: string): string;
+var
+  JSONRequest: TJSONObject;
+  JSONMessages: TJSONArray;
+begin
+  JSONMessages := TJSONArray.Create;
+  JSONMessages.Add(
+    TJSONObject.Create
+      .AddPair('role', 'user')
+      .AddPair('content', APrompt)
+  );
+
+  JSONRequest := TJSONObject.Create;
+  try
+    JSONRequest.AddPair('model', 'local-model'); // any string works
+    JSONRequest.AddPair('messages', JSONMessages);
+    JSONRequest.AddPair('temperature', TJSONNumber.Create(0.7));
+    Result := JSONRequest.ToString;
+  finally
+    JSONRequest.Free;
+  end;
+end;
+
+function TForm49.PostRequest(const AURL, ABody: string): string;
 var
   Client: TNetHTTPClient;
-  Response: IHTTPResponse;
   RequestBody: TStringStream;
-  JSONRequest, JSONResponse: TJSONObject;
-  JSONMessages: TJSONArray;
-  ResultText: string;
-  URL: string;
 begin
-  Result := '';
-  URL := 'http://' + edtHost.Text + ':' + edtPort.Text + '/v1/chat/completions';
   Client := TNetHTTPClient.Create(nil);
   try
-    JSONRequest := TJSONObject.Create;
-    JSONMessages := TJSONArray.Create;
+    Client.ResponseTimeout := 180_000; // 3 minutes
+    Client.ContentType := 'application/json';
+    RequestBody := TStringStream.Create(ABody, TEncoding.UTF8);
     try
-      Client.ResponseTimeout := 180_000; //3 minutes
-      // Build messages array
-      JSONMessages.Add(
-        TJSONObject.Create
-          .AddPair('role', 'user')
-          .AddPair('content', APrompt)
-      );
-
-      JSONRequest.AddPair('model', 'local-model'); // any string works
-      JSONRequest.AddPair('messages', JSONMessages);
-      JSONRequest.AddPair('temperature', TJSONNumber.Create(0.7));
-
-      RequestBody := TStringStream.Create(
-        JSONRequest.ToString, TEncoding.UTF8);
-      try
-        Client.ContentType := 'application/json';
-        Response := Client.Post(URL, RequestBody);
-
-        // Parse response
-        JSONResponse := TJSONObject.ParseJSONValue(
-          Response.ContentAsString) as TJSONObject;
-        try
-          ResultText := JSONResponse
-            .GetValue<TJSONArray>('choices')
-            .Items[0]
-            .GetValue<TJSONObject>('message')
-            .GetValue<string>('content');
-
-          Result := ResultText;
-        finally
-          JSONResponse.Free;
-        end;
-      finally
-        RequestBody.Free;
-      end;
+      Result := Client.Post(AURL, RequestBody).ContentAsString;
     finally
-      JSONRequest.Free;
+      RequestBody.Free;
     end;
   finally
     Client.Free;
   end;
+end;
+
+function TForm49.ParseResponse(const AResponseJSON: string): string;
+var
+  JSONResponse: TJSONObject;
+begin
+  JSONResponse := TJSONObject.ParseJSONValue(AResponseJSON) as TJSONObject;
+  try
+    Result := JSONResponse
+      .GetValue<TJSONArray>('choices')
+      .Items[0]
+      .GetValue<TJSONObject>('message')
+      .GetValue<string>('content');
+  finally
+    JSONResponse.Free;
+  end;
+end;
+
+function TForm49.AskLMStudio(const APrompt: string): string;
+begin
+  Result := ParseResponse(PostRequest(BuildURL, BuildRequestJSON(APrompt)));
 end;
 
 
