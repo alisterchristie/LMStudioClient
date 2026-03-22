@@ -77,6 +77,7 @@ object Form49: TForm49
     Height = 338
     TabOrder = 5
     AllowSingleSignOnUsingOSPrimaryAccount = False
+    OnNavigationCompleted = EdgeBrowser1NavigationCompleted
     TargetCompatibleBrowserVersion = '137.0.3296.44'
     UserDataFolder = '%LOCALAPPDATA%\bds.exe.WebView2'
   end

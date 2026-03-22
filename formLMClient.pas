@@ -20,13 +20,17 @@ type
     procedure Button1Click(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
+    procedure EdgeBrowser1NavigationCompleted(Sender: TCustomEdgeBrowser;
+      IsSuccess: Boolean; WebErrorStatus: COREWEBVIEW2_WEB_ERROR_STATUS);
   private
     FStreamThread: TThread;
-    procedure ShowMarkdown(const AMarkdown: string);
+    FPageReady: Boolean;
+    FAccumulatedText: string;
     procedure LoadSettings;
     procedure SaveSettings;
     function BuildRequestJSON(const APrompt: string): string;
     procedure StartStreaming(const APrompt: string);
+    procedure UpdateEdgeBrowser;
   public
   end;
 
@@ -36,7 +40,7 @@ var
 implementation
 
 uses
-  System.JSON, System.IOUtils, IniFiles;
+  System.JSON, System.IOUtils, System.Generics.Collections, IniFiles;
 
 // ---- WinHTTP API (streaming-capable Windows HTTP) ----
 
@@ -349,31 +353,6 @@ begin
   SaveSettings;
 end;
 
-// ---- Markdown display ----
-
-procedure TForm49.ShowMarkdown(const AMarkdown: string);
-var
-  JSStr: TJSONString;
-  Encoded: string;
-begin
-  JSStr := TJSONString.Create(AMarkdown);
-  try
-    // Break up any </script> sequence that would end the script tag early
-    Encoded := StringReplace(JSStr.ToJSON, '</', '<\/', [rfReplaceAll]);
-  finally
-    JSStr.Free;
-  end;
-  var HTML :=
-    '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' + CPageCSS +
-    '</style></head><body><div id="c"></div><script>' + CRenderJS +
-    'document.getElementById("c").innerHTML=render(' + Encoded + ')' +
-    '</script></body></html>';
-  var TempFile := TPath.Combine(TPath.GetTempPath, 'lmclient_response.html');
-  TFile.WriteAllText(TempFile, HTML, TEncoding.UTF8);
-  EdgeBrowser1.Navigate('file:///' +
-    StringReplace(TempFile, '\', '/', [rfReplaceAll]));
-end;
-
 // ---- Request building ----
 
 function TForm49.BuildRequestJSON(const APrompt: string): string;
@@ -400,13 +379,51 @@ begin
   end;
 end;
 
+// ---- EdgeBrowser streaming updates ----
+
+procedure TForm49.EdgeBrowser1NavigationCompleted(Sender: TCustomEdgeBrowser;
+  IsSuccess: Boolean; WebErrorStatus: COREWEBVIEW2_WEB_ERROR_STATUS);
+begin
+  FPageReady := IsSuccess;
+  if FPageReady then
+    UpdateEdgeBrowser; // render whatever has already arrived
+end;
+
+procedure TForm49.UpdateEdgeBrowser;
+var
+  JSStr: TJSONString;
+begin
+  if not FPageReady then Exit;
+  JSStr := TJSONString.Create(FAccumulatedText);
+  try
+    EdgeBrowser1.ExecuteScript('update(' + JSStr.ToJSON + ')');
+  finally
+    JSStr.Free;
+  end;
+end;
+
 // ---- Streaming ----
 
 procedure TForm49.StartStreaming(const APrompt: string);
+var
+  TempFile, HTML: string;
 begin
+  FAccumulatedText := '';
+  FPageReady := False;
   mmoResponse.Clear;
   Button1.Enabled := False;
   Button1.Caption := 'Asking…';
+
+  // Load the skeleton page now so the render + update functions are ready.
+  // ExecuteScript calls are deferred until OnNavigationCompleted fires.
+  HTML :=
+    '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' + CPageCSS +
+    '</style></head><body><div id="c"></div><script>' + CRenderJS +
+    'function update(md){document.getElementById(''c'').innerHTML=render(md);' +
+    'window.scrollTo(0,document.body.scrollHeight)}</script></body></html>';
+  TempFile := TPath.Combine(TPath.GetTempPath, 'lmclient_response.html');
+  TFile.WriteAllText(TempFile, HTML, TEncoding.UTF8);
+  EdgeBrowser1.Navigate('file:///' + StringReplace(TempFile, '\', '/', [rfReplaceAll]));
 
   FStreamThread := TStreamThread.Create(
     edtHost.Text,
@@ -414,14 +431,16 @@ begin
     BuildRequestJSON(APrompt),
     procedure(AText: string) // called on main thread per chunk
     begin
+      FAccumulatedText := FAccumulatedText + AText;
       mmoResponse.Text := mmoResponse.Text + AText;
+      UpdateEdgeBrowser;
     end,
     procedure // called on main thread when stream ends
     begin
       FreeAndNil(FStreamThread);
       Button1.Enabled := True;
       Button1.Caption := 'Ask';
-      ShowMarkdown(mmoResponse.Text);
+      UpdateEdgeBrowser; // ensure final state is shown
     end
   );
 end;
