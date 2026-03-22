@@ -1,4 +1,4 @@
-﻿unit formLMClient;
+unit formLMClient;
 
 interface
 
@@ -13,10 +13,18 @@ type
     Memo1: TMemo;
     mmoResponse: TMemo;
     EdgeBrowser1: TEdgeBrowser;
+    lblHost: TLabel;
+    edtHost: TEdit;
+    lblPort: TLabel;
+    edtPort: TEdit;
     procedure Button1Click(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
   private
     function AskLMStudio(const APrompt: string): string;
     procedure ShowMarkdown(const AMarkdown: string);
+    procedure LoadSettings;
+    procedure SaveSettings;
   public
     { Public declarations }
   end;
@@ -28,7 +36,7 @@ implementation
 
 uses
   System.Net.HttpClient, System.Net.HttpClientComponent,
-  System.JSON, System.IOUtils;
+  System.JSON, System.IOUtils, IniFiles;
 
 {$R *.dfm}
 
@@ -59,6 +67,43 @@ const
       'if(!l.trim()){fl();if(ul){o+="</ul>";ul=false}return}' +
       'buf+=(buf?"\n":"")+l' +
     '});fl();if(ul)o+="</ul>";return o}';
+
+function IniFilePath: string;
+begin
+  Result := ChangeFileExt(Application.ExeName, '.ini');
+end;
+
+procedure TForm49.LoadSettings;
+begin
+  var Ini := TIniFile.Create(IniFilePath);
+  try
+    edtHost.Text := Ini.ReadString('Connection', 'Host', 'localhost');
+    edtPort.Text := Ini.ReadString('Connection', 'Port', '1234');
+  finally
+    Ini.Free;
+  end;
+end;
+
+procedure TForm49.SaveSettings;
+begin
+  var Ini := TIniFile.Create(IniFilePath);
+  try
+    Ini.WriteString('Connection', 'Host', edtHost.Text);
+    Ini.WriteString('Connection', 'Port', edtPort.Text);
+  finally
+    Ini.Free;
+  end;
+end;
+
+procedure TForm49.FormCreate(Sender: TObject);
+begin
+  LoadSettings;
+end;
+
+procedure TForm49.FormDestroy(Sender: TObject);
+begin
+  SaveSettings;
+end;
 
 procedure TForm49.ShowMarkdown(const AMarkdown: string);
 var
@@ -91,8 +136,10 @@ var
   JSONRequest, JSONResponse: TJSONObject;
   JSONMessages: TJSONArray;
   ResultText: string;
+  URL: string;
 begin
   Result := '';
+  URL := 'http://' + edtHost.Text + ':' + edtPort.Text + '/v1/chat/completions';
   Client := TNetHTTPClient.Create(nil);
   try
     JSONRequest := TJSONObject.Create;
@@ -114,9 +161,7 @@ begin
         JSONRequest.ToString, TEncoding.UTF8);
       try
         Client.ContentType := 'application/json';
-        Response := Client.Post(
-          'http://localhost:1234/v1/chat/completions',
-          RequestBody);
+        Response := Client.Post(URL, RequestBody);
 
         // Parse response
         JSONResponse := TJSONObject.ParseJSONValue(
