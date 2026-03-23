@@ -8,7 +8,8 @@
 interface
 
 uses
-  System.Classes, System.SysUtils;
+  System.Classes,
+  System.SysUtils;
 
 type
   TStreamThread = class(TThread)

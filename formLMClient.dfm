@@ -1,4 +1,4 @@
-object Form49: TForm49
+object frmLMClient: TfrmLMClient
   Left = 0
   Top = 0
   Caption = 'LM Studio Client'
@@ -23,9 +23,6 @@ object Form49: TForm49
     Lines.Strings = (
       'Write me a story')
     TabOrder = 0
-    ExplicitLeft = -2
-    ExplicitTop = 37
-    ExplicitWidth = 998
   end
   object EdgeBrowser1: TEdgeBrowser
     AlignWithMargins = True
@@ -39,10 +36,6 @@ object Form49: TForm49
     TargetCompatibleBrowserVersion = '137.0.3296.44'
     UserDataFolder = '%LOCALAPPDATA%\bds.exe.WebView2'
     OnNavigationCompleted = EdgeBrowser1NavigationCompleted
-    ExplicitLeft = 36
-    ExplicitTop = 287
-    ExplicitWidth = 960
-    ExplicitHeight = 218
   end
   object pnlTop: TPanel
     Left = 0

@@ -3,12 +3,23 @@
 interface
 
 uses
-  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
-  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, Winapi.WebView2,
-  Winapi.ActiveX, Vcl.Edge, Vcl.ExtCtrls;
+  Winapi.Windows,
+  Winapi.Messages,
+  System.SysUtils,
+  System.Variants,
+  System.Classes,
+  Vcl.Graphics,
+  Vcl.Controls,
+  Vcl.Forms,
+  Vcl.Dialogs,
+  Vcl.StdCtrls,
+  Winapi.WebView2,
+  Winapi.ActiveX,
+  Vcl.Edge,
+  Vcl.ExtCtrls;
 
 type
-  TForm49 = class(TForm)
+  TfrmLMClient = class(TForm)
     Button1: TButton;
     Memo1: TMemo;
     EdgeBrowser1: TEdgeBrowser;
@@ -35,12 +46,14 @@ type
   end;
 
 var
-  Form49: TForm49;
+  frmLMClient: TfrmLMClient;
 
 implementation
 
 uses
-  System.JSON, System.IOUtils, IniFiles,
+  System.JSON,
+  System.IOUtils,
+  IniFiles,
   StreamThread;
 
 {$R *.dfm}
@@ -119,7 +132,7 @@ begin
   Result := ChangeFileExt(Application.ExeName, '.ini');
 end;
 
-procedure TForm49.LoadSettings;
+procedure TfrmLMClient.LoadSettings;
 begin
   var Ini := TIniFile.Create(IniFilePath);
   try
@@ -130,7 +143,7 @@ begin
   end;
 end;
 
-procedure TForm49.SaveSettings;
+procedure TfrmLMClient.SaveSettings;
 begin
   var Ini := TIniFile.Create(IniFilePath);
   try
@@ -141,12 +154,12 @@ begin
   end;
 end;
 
-procedure TForm49.FormCreate(Sender: TObject);
+procedure TfrmLMClient.FormCreate(Sender: TObject);
 begin
   LoadSettings;
 end;
 
-procedure TForm49.FormDestroy(Sender: TObject);
+procedure TfrmLMClient.FormDestroy(Sender: TObject);
 begin
   if Assigned(FStreamThread) then
   begin
@@ -159,7 +172,7 @@ end;
 
 // ---- Request building ----
 
-function TForm49.BuildRequestJSON(const APrompt: string): string;
+function TfrmLMClient.BuildRequestJSON(const APrompt: string): string;
 var
   JSONRequest: TJSONObject;
   JSONMessages: TJSONArray;
@@ -185,7 +198,7 @@ end;
 
 // ---- EdgeBrowser streaming updates ----
 
-procedure TForm49.EdgeBrowser1NavigationCompleted(Sender: TCustomEdgeBrowser;
+procedure TfrmLMClient.EdgeBrowser1NavigationCompleted(Sender: TCustomEdgeBrowser;
   IsSuccess: Boolean; WebErrorStatus: COREWEBVIEW2_WEB_ERROR_STATUS);
 begin
   FPageReady := IsSuccess;
@@ -193,7 +206,7 @@ begin
     UpdateEdgeBrowser; // render whatever has already arrived
 end;
 
-procedure TForm49.UpdateEdgeBrowser;
+procedure TfrmLMClient.UpdateEdgeBrowser;
 var
   JSStr: TJSONString;
 begin
@@ -208,7 +221,7 @@ end;
 
 // ---- Streaming ----
 
-procedure TForm49.StartStreaming(const APrompt: string);
+procedure TfrmLMClient.StartStreaming(const APrompt: string);
 var
   TempFile, HTML: string;
 begin
@@ -247,7 +260,7 @@ begin
   );
 end;
 
-procedure TForm49.Button1Click(Sender: TObject);
+procedure TfrmLMClient.Button1Click(Sender: TObject);
 begin
   StartStreaming(Memo1.Text);
 end;
