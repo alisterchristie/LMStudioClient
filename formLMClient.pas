@@ -1,4 +1,4 @@
-unit formLMClient;
+﻿unit formLMClient;
 
 interface
 
@@ -49,64 +49,68 @@ uses
 
 const
   CPageCSS =
-    'body{font-family:Segoe UI,sans-serif;margin:16px;line-height:1.6}' +
-    'pre{background:#f5f5f5;padding:12px;border-radius:4px;overflow-x:auto;font-size:.9em}' +
-    'code{background:#f5f5f5;padding:2px 5px;border-radius:3px;font-size:.9em}' +
-    'pre code{background:none;padding:0}' +
-    'h1,h2,h3,h4{margin:.8em 0 .3em}ul,ol{padding-left:1.5em}p{margin:.5em 0}' +
-    'table{border-collapse:collapse;width:100%;margin:.5em 0}' +
-    'th,td{border:1px solid #ddd;padding:6px 10px;text-align:left}' +
-    'th{background:#f0f0f0;font-weight:600}' +
-    'tr:nth-child(even){background:#fafafa}' +
-    'blockquote{border-left:3px solid #ccc;margin:0 0 .5em;padding:.2em .8em;color:#555}' +
-    'del{text-decoration:line-through}' +
-    'hr{border:none;border-top:1px solid #ddd;margin:1em 0}';
+    '''
+    body{font-family:Segoe UI,sans-serif;margin:16px;line-height:1.6}
+    pre{background:#f5f5f5;padding:12px;border-radius:4px;overflow-x:auto;font-size:.9em}
+    code{background:#f5f5f5;padding:2px 5px;border-radius:3px;font-size:.9em}
+    pre code{background:none;padding:0}
+    h1,h2,h3,h4{margin:.8em 0 .3em}ul,ol{padding-left:1.5em}p{margin:.5em 0}
+    table{border-collapse:collapse;width:100%;margin:.5em 0}
+    th,td{border:1px solid #ddd;padding:6px 10px;text-align:left}
+    th{background:#f0f0f0;font-weight:600}
+    tr:nth-child(even){background:#fafafa}
+    blockquote{border-left:3px solid #ccc;margin:0 0 .5em;padding:.2em .8em;color:#555}
+    del{text-decoration:line-through}
+    hr{border:none;border-top:1px solid #ddd;margin:1em 0}
+    ''';
 
   // Inline markdown renderer — no CDN, no timing issues
   CRenderJS =
-    'function render(md){' +
-    'function esc(s){return s.replace(/&/g,''&amp;'').replace(/</g,''&lt;'').replace(/>/g,''&gt;'')}' +
-    'function inl(s){return esc(s)' +
-    '.replace(/`([^`]+)`/g,''<code>$1</code>'')' +
-    '.replace(/\*\*([^*\n]+)\*\*/g,''<strong>$1</strong>'')' +
-    '.replace(/\*([^*\n]+)\*/g,''<em>$1</em>'')' +
-    '.replace(/~~([^~\n]+)~~/g,''<del>$1</del>'')}' +
-    'function cells(r){return r.replace(/^\||\|$/g,'''').split(''|'').map(function(c){return c.trim()})}' +
-    'function isSep(s){return /^[\s|:\-]+$/.test(s)&&s.indexOf(''|'')>=0&&s.indexOf(''-'')>=0}' +
-    'var lines=md.split(''\n''),i=0,out='''';' +
-    'while(i<lines.length){var L=lines[i];' +
-    'if(!L.trim()){i++;continue}' +
-    'if(/^```/.test(L)){var code='''';i++;' +
-    'while(i<lines.length&&!/^```/.test(lines[i])){code+=esc(lines[i])+''\n'';i++}' +
-    'i++;out+=''<pre><code>''+code+''</code></pre>'';continue}' +
-    'var hm=L.match(/^(#{1,6}) (.*)/);' +
-    'if(hm){out+=''<h''+hm[1].length+''>''+inl(hm[2])+''</h''+hm[1].length+''>'';i++;continue}' +
-    'if(/^([-*_]){3,}\s*$/.test(L)){out+=''<hr>'';i++;continue}' +
-    'if(/^>/.test(L)){var bq='''';' +
-    'while(i<lines.length&&/^>/.test(lines[i])){bq+=lines[i].slice(1)+''\n'';i++}' +
-    'out+=''<blockquote>''+render(bq)+''</blockquote>'';continue}' +
-    'if(i+1<lines.length&&isSep(lines[i+1])){var hdrs=cells(L);i+=2;' +
-    'out+=''<table><thead><tr>'';' +
-    'hdrs.forEach(function(h){out+=''<th>''+inl(h)+''</th>''});' +
-    'out+=''</tr></thead><tbody>'';' +
-    'while(i<lines.length&&lines[i].trim()&&lines[i].indexOf(''|'')>=0){' +
-    'out+=''<tr>'';cells(lines[i]).forEach(function(c){out+=''<td>''+inl(c)+''</td>''});' +
-    'out+=''</tr>'';i++}' +
-    'out+=''</tbody></table>'';continue}' +
-    'if(/^[-*+] /.test(L)){out+=''<ul>'';' +
-    'while(i<lines.length&&/^[-*+] /.test(lines[i])){out+=''<li>''+inl(lines[i].slice(2))+''</li>'';i++}' +
-    'out+=''</ul>'';continue}' +
-    'if(/^\d+\. /.test(L)){out+=''<ol>'';' +
-    'while(i<lines.length&&/^\d+\. /.test(lines[i])){out+=''<li>''+inl(lines[i].replace(/^\d+\.\s+/,''''))+''</li>'';i++}' +
-    'out+=''</ol>'';continue}' +
-    'var p='''';' +
-    'while(i<lines.length&&lines[i].trim()' +
-    '&&!/^(#{1,6} |```|>|[-*+] |\d+\. )/.test(lines[i])' +
-    '&&!/^([-*_]){3,}\s*$/.test(lines[i])' +
-    '&&!(i+1<lines.length&&isSep(lines[i+1]))){' +
-    'p+=(p?''\n'':'''')+lines[i];i++}' +
-    'if(p)out+=''<p>''+inl(p)+''</p>''}' +
-    'return out}';
+    '''
+    function render(md){
+    function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+    function inl(s){return esc(s)
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*([^*\n]+)\*/g,'<em>$1</em>')
+    .replace(/~~([^~\n]+)~~/g,'<del>$1</del>')}
+    function cells(r){return r.replace(/^\||\|$/g,'').split('|').map(function(c){return c.trim()})}
+    function isSep(s){return /^[\s|:\-]+$/.test(s)&&s.indexOf('|')>=0&&s.indexOf('-')>=0}
+    var lines=md.split('\n'),i=0,out='';
+    while(i<lines.length){var L=lines[i];
+    if(!L.trim()){i++;continue}
+    if(/^```/.test(L)){var code='';i++;
+    while(i<lines.length&&!/^```/.test(lines[i])){code+=esc(lines[i])+'\n';i++}
+    i++;out+='<pre><code>'+code+'</code></pre>';continue}
+    var hm=L.match(/^(#{1,6}) (.*)/);
+    if(hm){out+='<h'+hm[1].length+'>'+inl(hm[2])+'</h'+hm[1].length+'>';i++;continue}
+    if(/^([-*_]){3,}\s*$/.test(L)){out+='<hr>';i++;continue}
+    if(/^>/.test(L)){var bq='';
+    while(i<lines.length&&/^>/.test(lines[i])){bq+=lines[i].slice(1)+'\n';i++}
+    out+='<blockquote>'+render(bq)+'</blockquote>';continue}
+    if(i+1<lines.length&&isSep(lines[i+1])){var hdrs=cells(L);i+=2;
+    out+='<table><thead><tr>';
+    hdrs.forEach(function(h){out+='<th>'+inl(h)+'</th>'});
+    out+='</tr></thead><tbody>';
+    while(i<lines.length&&lines[i].trim()&&lines[i].indexOf('|')>=0){
+    out+='<tr>';cells(lines[i]).forEach(function(c){out+='<td>'+inl(c)+'</td>'});
+    out+='</tr>';i++}
+    out+='</tbody></table>';continue}
+    if(/^[-*+] /.test(L)){out+='<ul>';
+    while(i<lines.length&&/^[-*+] /.test(lines[i])){out+='<li>'+inl(lines[i].slice(2))+'</li>';i++}
+    out+='</ul>';continue}
+    if(/^\d+\. /.test(L)){out+='<ol>';
+    while(i<lines.length&&/^\d+\. /.test(lines[i])){out+='<li>'+inl(lines[i].replace(/^\d+\.\s+/,''))+'</li>';i++}
+    out+='</ol>';continue}
+    var p='';
+    while(i<lines.length&&lines[i].trim()
+    &&!/^(#{1,6} |```|>|[-*+] |\d+\. )/.test(lines[i])
+    &&!/^([-*_]){3,}\s*$/.test(lines[i])
+    &&!(i+1<lines.length&&isSep(lines[i+1]))){
+    p+=(p?'\n':'')+lines[i];i++}
+    if(p)out+='<p>'+inl(p)+'</p>'}
+    return out}
+    ''';
 
 // ---- Settings ----
 
